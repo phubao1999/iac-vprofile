@@ -1,0 +1,104 @@
+Parameters:
+  NameOfService:
+    Description: The Name of the service this stack is to be used for.
+    Type: String
+  InstanceTypeParameter:
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro
+      - m1.small
+      - m1.large
+    Description: Enter t2.micro, m1.small, or m1.large. Default is t2.micro.
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instances
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: must be the name of an existing EC2 KeyPair.
+
+Mappings:
+  AmiRegionMap:
+    us-east-1:
+      AMI: "ami-6411e20d"
+    us-west-1:
+      AMI: "ami-c9c7978c"
+    eu-west-1:
+      AMI: "ami-37c2f643"
+    ap-southeast-1:
+      AMI: "ami-66f28c34"
+    ap-northeast-1:
+      AMI: "ami-9c03a89d"
+
+Resources:
+  MyInstance:
+    Type: AWS::EC2::Instance
+    Metadata:
+      config:
+        packages:
+          yum:
+            php: []
+            httpd: []
+            wget: []
+            unzip: []
+            git: []
+        commands:
+          test:
+            command: "wget https://www.tooplate.com/zip-templates/2131_wedding_lite.zip && unzip 2131_wedding_lite.zip -d /var/www/html/"
+            files:
+              /var/www/html/hello.html:
+                content: !Sub |
+                  <html>
+                  <head>
+                  <title>Wedding Lite</title>
+                  </head>
+                  <body>
+                  <h1>Welcome to Wedding Lite</h1>
+                  </body>
+                  </html>
+            services:
+              sysvinit:
+                httpd:
+                  enabled: "true"
+                  ensureRunning: "true"
+    Properties:
+      ImageId: !FindInMap
+        - AmiRegionMap
+        - !Ref "AWS::Region"
+        - AMI
+      InstanceType: !Ref InstanceTypeParameter
+      KeyName: !Ref KeyName
+      Tags:
+        - Key: "Name"
+          Value: !Ref NameOfService
+      SecurityGroups:
+        - !Ref MySecurityGroup
+      UserData:
+        "Fn::Base64": !Sub |
+          #!/bin/bash -xe
+          yum update -y
+          yum install -y aws-cfn-bootstrap
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource MyInstance --region ${AWS::Region}
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource MyInstance --region ${AWS::Region}
+
+  MySecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow ssh & http to client host
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: "80"
+          ToPort: "80"
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: "22"
+          ToPort: "22"
+          CidrIp: 183.83.39.124/32
+      SecurityGroupEgress:
+        - IpProtocol: "TCP"
+          FromPort: "80"
+          ToPort: "80"
+          CidrIp: 0.0.0.0/0
+Outputs:
+  PrintSomeInfo:
+    value: !GetAtt
+      - MyInstance
+      - PublicDnsName
